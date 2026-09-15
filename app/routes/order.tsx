@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import type { Route } from "./+types/order";
 import { getOrder } from "~/lib/orders.server";
 import { US_STATES } from "~/lib/shipping";
-import { formatMoney } from "~/lib/catalog/types";
+import { formatMoney } from "~/lib/money";
 
 export function meta({ data }: Route.MetaArgs) {
   return [{ title: data ? `Order ${data.order.number} · MERIDIAN` : "Order not found" }];

@@ -1,7 +1,8 @@
 import { createCookieSessionStorage } from "react-router";
 import { getVariantsByIds } from "./catalog.server";
 import { clampQuantity } from "./cart";
-import { fromMinorUnits, toMinorUnits, type Money, type VariantWithProduct } from "./catalog/types";
+import type { VariantWithProduct } from "./catalog/types";
+import { fromMinorUnits, toMinorUnits, type Money } from "./money";
 
 /**
  * The cart stores only variantId + quantity. Prices are always recomputed on the

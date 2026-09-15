@@ -5,7 +5,7 @@ import {
   type ShippingAddress,
   type ShippingMethod,
 } from "./shipping";
-import { fromMinorUnits, toMinorUnits, type Money } from "./catalog/types";
+import { fromMinorUnits, toMinorUnits, type Money } from "./money";
 
 /**
  * Mock order store.

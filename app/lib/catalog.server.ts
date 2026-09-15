@@ -9,7 +9,7 @@
  *
  * The `.server` suffix is load-bearing: the Shopify adapter reads process.env and
  * calls fetch, so this module must never reach the client bundle. Components that
- * need `formatMoney` or the types import ./catalog/types instead.
+ * need the catalog types import ./catalog/types instead, and ./money for prices.
  */
 
 import { mockCatalog } from "./catalog/mock.server";

@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import type { Route } from "./+types/product";
 import { AddToCartForm } from "~/components/AddToCartForm";
 import { getProductByHandle } from "~/lib/catalog.server";
-import { formatMoney } from "~/lib/catalog/types";
+import { formatMoney } from "~/lib/money";
 
 export function meta({ data }: Route.MetaArgs) {
   return [{ title: data ? `${data.product.title} · MERIDIAN` : "Product not found" }];

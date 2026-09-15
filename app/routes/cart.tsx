@@ -11,7 +11,7 @@ import {
 import { getVariantById } from "~/lib/catalog.server";
 // The ceiling the server enforces, imported rather than repeated
 import { MAX_QUANTITY } from "~/lib/cart";
-import { formatMoney } from "~/lib/catalog/types";
+import { formatMoney } from "~/lib/money";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Cart · MERIDIAN" }];

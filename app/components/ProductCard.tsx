@@ -1,5 +1,6 @@
 import { Link } from "react-router";
-import { formatMoney, type ProductSummary } from "~/lib/catalog/types";
+import { type ProductSummary } from "~/lib/catalog/types";
+import { formatMoney } from "~/lib/money";
 
 /**
  * Takes a ProductSummary rather than a Product: the card renders six fields, so

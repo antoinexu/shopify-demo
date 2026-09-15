@@ -11,7 +11,7 @@ import {
   type ShippingAddress,
   type ShippingMethodId,
 } from "~/lib/shipping";
-import { formatMoney, fromMinorUnits, toMinorUnits } from "~/lib/catalog/types";
+import { formatMoney, fromMinorUnits, toMinorUnits } from "~/lib/money";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Checkout · MERIDIAN" }];
