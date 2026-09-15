@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Route } from "./+types/product";
 import { loader } from "./product";
-import { loaderArgs, statusOfThrown } from "~/lib/test/route-args";
+import { routeArgs, statusOfThrown } from "~/lib/test/routes";
 
 /**
  * The handle comes straight out of the URL, which puts this loader one missing
@@ -10,7 +10,7 @@ import { loaderArgs, statusOfThrown } from "~/lib/test/route-args";
  */
 
 function load(handle: string) {
-  return loader(loaderArgs<Route.LoaderArgs>({ handle }, `http://localhost/products/${handle}`));
+  return loader(routeArgs<Route.LoaderArgs>(new Request(`http://localhost/products/${handle}`), { handle }));
 }
 
 describe("product loader", () => {

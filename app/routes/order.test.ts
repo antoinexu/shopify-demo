@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Route } from "./+types/order";
 import { loader } from "./order";
-import { loaderArgs, statusOfThrown } from "~/lib/test/route-args";
+import { routeArgs, statusOfThrown } from "~/lib/test/routes";
 
 /**
  * The order id is both the lookup key and the only thing protecting the order,
@@ -10,7 +10,7 @@ import { loaderArgs, statusOfThrown } from "~/lib/test/route-args";
  */
 
 function load(id: string) {
-  return loader(loaderArgs<Route.LoaderArgs>({ id }, `http://localhost/orders/${id}`));
+  return loader(routeArgs<Route.LoaderArgs>(new Request(`http://localhost/orders/${id}`), { id }));
 }
 
 describe("order loader", () => {

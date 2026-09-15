@@ -3,6 +3,7 @@ import type { Route } from "./+types/checkout";
 import { action, loader } from "./checkout";
 import { addToCart, getCart } from "~/lib/cart.server";
 import { getOrder } from "~/lib/orders.server";
+import { asRequestCookie, routeArgs, unwrap } from "~/lib/test/routes";
 
 /**
  * Checkout is where the money is decided, so these tests care about two things
@@ -28,10 +29,6 @@ const VALID = {
   shipping: "standard",
 };
 
-function asRequestCookie(setCookie: string): string {
-  return setCookie.split(";")[0];
-}
-
 function get(cookie?: string): Request {
   return new Request("http://localhost/checkout", {
     headers: cookie ? { Cookie: asRequestCookie(cookie) } : {},
@@ -49,9 +46,7 @@ function post(fields: Record<string, string>, cookie?: string): Request {
   });
 }
 
-function args(request: Request) {
-  return { request, params: {}, context: {} } as unknown as Route.ActionArgs;
-}
+const args = (request: Request) => routeArgs<Route.ActionArgs>(request);
 
 /** A cart holding one hoodie and one tote: 89.00 + 58.00 = 147.00. */
 async function cartWithTwoItems(): Promise<string> {
@@ -66,12 +61,6 @@ async function placeOrder(overrides: Record<string, string> = {}, cookie?: strin
 
   expect(response, "a valid submission must redirect").toBeInstanceOf(Response);
   return response as Response;
-}
-
-/** `data(...)` returns a wrapper rather than a Response. */
-function unwrap(result: unknown): { data: unknown; status: number } {
-  const wrapper = result as { data: unknown; init?: ResponseInit | null };
-  return { data: wrapper.data, status: wrapper.init?.status ?? 200 };
 }
 
 function orderIdFrom(response: Response): string {

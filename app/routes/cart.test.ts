@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Route } from "./+types/cart";
 import { action, loader } from "./cart";
 import { addToCart, getCart } from "~/lib/cart.server";
+import { asRequestCookie, routeArgs, unwrap } from "~/lib/test/routes";
 
 /**
  * The cart route is the only write endpoint in the app: every add, update,
@@ -17,11 +18,6 @@ import { addToCart, getCart } from "~/lib/cart.server";
 
 const HOODIE_S = "gid://shopify/ProductVariant/101";
 const TOTE = "gid://shopify/ProductVariant/201";
-
-/** Turn a Set-Cookie response header back into a Cookie request header. */
-function asRequestCookie(setCookie: string): string {
-  return setCookie.split(";")[0];
-}
 
 function post(fields: Record<string, string>, cookie?: string): Request {
   const body = new FormData();
@@ -40,24 +36,8 @@ function get(cookie?: string): Request {
   });
 }
 
-/**
- * The route args carry `params` and `context` that neither the loader nor the
- * action reads; only the request matters here.
- */
-function args(request: Request) {
-  return { request, params: {}, context: {} } as unknown as Route.ActionArgs;
-}
-
-/** `data(...)` returns a wrapper, not a Response — unwrap both shapes the same way. */
-function unwrap(result: unknown): { data: unknown; status: number; headers: Headers } {
-  const wrapper = result as { data: unknown; init?: ResponseInit | null };
-  const init = wrapper.init ?? {};
-  return {
-    data: wrapper.data,
-    status: init.status ?? 200,
-    headers: new Headers(init.headers ?? {}),
-  };
-}
+/** Neither the loader nor the action reads params or context; only the request matters here. */
+const args = (request: Request) => routeArgs<Route.ActionArgs>(request);
 
 /** Runs the action and returns the cookie it set, ready to feed into the next request. */
 async function run(fields: Record<string, string>, cookie?: string): Promise<string> {

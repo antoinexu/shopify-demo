@@ -7,6 +7,7 @@ import {
   removeCartLine,
   updateCartLine,
 } from "./cart.server";
+import { asRequestCookie } from "./test/routes";
 
 /**
  * These drive the real cookie session round trip rather than poking at internals,
@@ -20,11 +21,6 @@ import {
 const HOODIE_S = "gid://shopify/ProductVariant/101";
 const HOODIE_M = "gid://shopify/ProductVariant/102";
 const TOTE = "gid://shopify/ProductVariant/201";
-
-/** Turn a Set-Cookie response header back into a Cookie request header. */
-function asRequestCookie(setCookie: string): string {
-  return setCookie.split(";")[0];
-}
 
 function requestWith(setCookie?: string): Request {
   return new Request("http://localhost/cart", {
