@@ -1,0 +1,24 @@
+# Dependencies
+node_modules
+
+# Build output
+build
+.react-router
+
+# Environment (.env.example is committed, so it is allowed back in)
+.env
+.env.*
+!.env.example
+
+# Editors / IDEs
+.idea
+.vscode
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
