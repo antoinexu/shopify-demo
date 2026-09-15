@@ -1,6 +1,7 @@
 import type { Route } from "./+types/home";
 import { ProductCard } from "~/components/ProductCard";
 import { getProducts } from "~/lib/catalog.server";
+import { toProductSummary } from "~/lib/catalog/types";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -11,7 +12,9 @@ export function meta(_: Route.MetaArgs) {
 
 export async function loader() {
   const products = await getProducts();
-  return { products };
+  // Ship only what the grid renders. Returning the full products here would
+  // serialize every description and every variant into the HTML document.
+  return { products: products.map(toProductSummary) };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {

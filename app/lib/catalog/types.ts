@@ -67,3 +67,37 @@ export function formatMoney({ amount, currencyCode }: Money): string {
     currency: currencyCode,
   }).format(Number(amount));
 }
+
+/**
+ * What the product grid actually renders.
+ *
+ * The grid never shows a description or a variant list, but a `Product` carries
+ * both — a description plus up to 250 variants each. Handing the full shape to
+ * the home loader means all of it is serialized into the SSR payload and shipped
+ * to the browser to be thrown away: harmless against six fixtures, and a
+ * multi-megabyte document against a migrated store with a few thousand products.
+ *
+ * Trimming happens in the loader, so the cost scales with what is displayed
+ * rather than with what the catalog happens to hold.
+ */
+export type ProductSummary = {
+  id: string;
+  handle: string;
+  title: string;
+  image: ProductImage;
+  minPrice: Money;
+  /** False when every variant is unavailable — drives the "Sold out" tag. */
+  availableForSale: boolean;
+};
+
+export function toProductSummary(product: Product): ProductSummary {
+  return {
+    id: product.id,
+    handle: product.handle,
+    title: product.title,
+    // Adapters guarantee a non-empty images array, so index 0 is always safe
+    image: product.images[0],
+    minPrice: product.priceRange.minVariantPrice,
+    availableForSale: product.variants.some((variant) => variant.availableForSale),
+  };
+}
