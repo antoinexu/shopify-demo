@@ -9,6 +9,8 @@ import {
   type CartLine,
 } from "~/lib/cart.server";
 import { getVariantById } from "~/lib/catalog.server";
+// The ceiling the server enforces, imported rather than repeated
+import { MAX_QUANTITY } from "~/lib/cart";
 import { formatMoney } from "~/lib/catalog/types";
 
 export function meta(_: Route.MetaArgs) {
@@ -149,7 +151,7 @@ function CartLineRow({ line }: { line: CartLine }) {
           name="quantity"
           value={quantity + 1}
           aria-label="Increase quantity"
-          disabled={busy || quantity >= 99}
+          disabled={busy || quantity >= MAX_QUANTITY}
         >
           +
         </button>

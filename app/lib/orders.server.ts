@@ -5,7 +5,7 @@ import {
   type ShippingAddress,
   type ShippingMethod,
 } from "./shipping";
-import type { Money } from "./catalog/types";
+import { fromMinorUnits, toMinorUnits, type Money } from "./catalog/types";
 
 /**
  * Mock order store.
@@ -41,10 +41,6 @@ export type Order = {
 
 const ORDERS = new Map<string, Order>();
 
-function money(amount: number, currencyCode: string): Money {
-  return { amount: amount.toFixed(2), currencyCode };
-}
-
 /**
  * The order id doubles as the access credential — the order page has no auth,
  * so anyone with the link can view it. That makes a cryptographically secure
@@ -67,7 +63,10 @@ function orderNumber(date: Date): string {
 
 export function createOrder(cart: Cart, address: ShippingAddress, shipping: ShippingMethod): Order {
   const currency = cart.subtotal.currencyCode;
-  const subtotal = Number(cart.subtotal.amount);
+  // Totals in integer cents. This is the number the customer is charged, so it is
+  // the last place that should inherit float rounding — see toMinorUnits.
+  const subtotal = toMinorUnits(cart.subtotal.amount);
+  const shippingFee = toMinorUnits(shipping.fee);
   const now = new Date();
 
   const order: Order = {
@@ -85,9 +84,9 @@ export function createOrder(cart: Cart, address: ShippingAddress, shipping: Ship
       unitPrice: line.variant.price,
       lineTotal: line.lineTotal,
     })),
-    subtotal: money(subtotal, currency),
-    shippingFee: money(shipping.fee, currency),
-    total: money(subtotal + shipping.fee, currency),
+    subtotal: fromMinorUnits(subtotal, currency),
+    shippingFee: fromMinorUnits(shippingFee, currency),
+    total: fromMinorUnits(subtotal + shippingFee, currency),
   };
 
   ORDERS.set(order.id, order);

@@ -1,6 +1,7 @@
 import { createCookieSessionStorage } from "react-router";
 import { getVariantsByIds } from "./catalog.server";
-import type { Money, VariantWithProduct } from "./catalog/types";
+import { clampQuantity } from "./cart";
+import { fromMinorUnits, toMinorUnits, type Money, type VariantWithProduct } from "./catalog/types";
 
 /**
  * The cart stores only variantId + quantity. Prices are always recomputed on the
@@ -25,6 +26,9 @@ export type Cart = {
 };
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+/** Only ever used for the subtotal of an empty cart, which has no line to take a currency from. */
+const DEFAULT_CURRENCY = "USD";
 
 /**
  * A hardcoded fallback is fine for local development and unacceptable in
@@ -56,13 +60,6 @@ const { getSession, commitSession } = createCookieSessionStorage<{ items: CartIt
     secure: IS_PRODUCTION,
   },
 });
-
-const MAX_QUANTITY = 99;
-
-function clamp(quantity: number): number {
-  if (!Number.isFinite(quantity)) return 0;
-  return Math.min(Math.max(Math.trunc(quantity), 0), MAX_QUANTITY);
-}
 
 async function readItems(request: Request): Promise<CartItem[]> {
   const session = await getSession(request.headers.get("Cookie"));
@@ -105,34 +102,45 @@ export async function getCart(request: Request): Promise<Cart> {
     // Skip stale entries for delisted products instead of blowing up the page
     if (!variant) continue;
 
-    const lineTotal = Number(variant.price.amount) * item.quantity;
+    // Integer cents throughout: see toMinorUnits for what floats get wrong here
+    const lineTotal = toMinorUnits(variant.price.amount) * item.quantity;
     lines.push({
       variantId: item.variantId,
       quantity: item.quantity,
       variant,
-      lineTotal: { amount: lineTotal.toFixed(2), currencyCode: variant.price.currencyCode },
+      lineTotal: fromMinorUnits(lineTotal, variant.price.currencyCode),
     });
   }
 
-  const subtotalAmount = lines.reduce((sum, line) => sum + Number(line.lineTotal.amount), 0);
+  const currency = lines[0]?.lineTotal.currencyCode ?? DEFAULT_CURRENCY;
+
+  // Summing across currencies produces a number that is simply wrong while still
+  // looking plausible, so refuse rather than render it. A Storefront API context
+  // serves one currency, which makes this an impossible-state guard: if it ever
+  // fires, something upstream is mixing two stores.
+  const foreign = lines.find((line) => line.lineTotal.currencyCode !== currency);
+  if (foreign) {
+    throw new Error(
+      `Cart mixes currencies (${currency} and ${foreign.lineTotal.currencyCode}); refusing to total it.`,
+    );
+  }
+
+  const subtotal = lines.reduce((sum, line) => sum + toMinorUnits(line.lineTotal.amount), 0);
 
   return {
     lines,
     totalQuantity: lines.reduce((sum, line) => sum + line.quantity, 0),
-    subtotal: {
-      amount: subtotalAmount.toFixed(2),
-      currencyCode: lines[0]?.lineTotal.currencyCode ?? "USD",
-    },
+    subtotal: fromMinorUnits(subtotal, currency),
   };
 }
 
 export async function addToCart(request: Request, variantId: string, quantity: number) {
   const items = await readItems(request);
-  const amount = clamp(quantity) || 1;
+  const amount = clampQuantity(quantity) || 1;
   const existing = items.find((item) => item.variantId === variantId);
 
   if (existing) {
-    existing.quantity = clamp(existing.quantity + amount);
+    existing.quantity = clampQuantity(existing.quantity + amount);
   } else {
     items.push({ variantId, quantity: amount });
   }
@@ -142,7 +150,7 @@ export async function addToCart(request: Request, variantId: string, quantity: n
 
 export async function updateCartLine(request: Request, variantId: string, quantity: number) {
   const items = await readItems(request);
-  const amount = clamp(quantity);
+  const amount = clampQuantity(quantity);
   const next =
     amount === 0
       ? items.filter((item) => item.variantId !== variantId)

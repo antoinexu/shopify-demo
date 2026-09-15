@@ -5,8 +5,13 @@ import { clearCart, getCart } from "~/lib/cart.server";
 // Used only inside loader / action, so React Router strips these from the client bundle
 import { createOrder, validateCheckout } from "~/lib/orders.server";
 // Used inside the component, so these must come from a module without the .server suffix
-import { SHIPPING_METHODS, US_STATES, type ShippingAddress } from "~/lib/shipping";
-import { formatMoney } from "~/lib/catalog/types";
+import {
+  SHIPPING_METHODS,
+  US_STATES,
+  type ShippingAddress,
+  type ShippingMethodId,
+} from "~/lib/shipping";
+import { formatMoney, fromMinorUnits, toMinorUnits } from "~/lib/catalog/types";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Checkout · MERIDIAN" }];
@@ -32,7 +37,10 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   if (Object.keys(errors).length > 0) {
-    return data({ errors, values: address }, { status: 400 });
+    // shippingId rides along with the address values: without JavaScript the page
+    // is re-rendered from scratch, and a customer who picked Express should not
+    // find themselves back on Standard just because a ZIP code was malformed.
+    return data({ errors, values: address, shippingId: shipping.id }, { status: 400 });
   }
 
   const order = createOrder(cart, address, shipping);
@@ -60,12 +68,18 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
   const navigation = useNavigation();
   const submitting = navigation.formAction === "/checkout";
 
-  // Shipping cost is reflected in the summary immediately, without a round trip
-  const [shippingId, setShippingId] = useState(SHIPPING_METHODS[0].id);
+  // Shipping cost is reflected in the summary immediately, without a round trip.
+  // The initial value only matters on a fresh document — with JavaScript the
+  // component stays mounted across a failed submit and keeps its own state.
+  const [shippingId, setShippingId] = useState<ShippingMethodId>(
+    actionData?.shippingId ?? SHIPPING_METHODS[0].id,
+  );
   const shipping = SHIPPING_METHODS.find((method) => method.id === shippingId) ?? SHIPPING_METHODS[0];
 
   const currency = cart.subtotal.currencyCode;
-  const total = Number(cart.subtotal.amount) + shipping.fee;
+  // Same integer-cent arithmetic the server uses, so the figure on the button is
+  // the figure createOrder records — not one that rounds differently
+  const total = fromMinorUnits(toMinorUnits(cart.subtotal.amount) + toMinorUnits(shipping.fee), currency);
 
   return (
     <section className="checkout">
@@ -197,7 +211,7 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
           <button type="submit" className="button button-block" disabled={submitting}>
             {submitting
               ? "Placing order…"
-              : `Place order · ${formatMoney({ amount: total.toFixed(2), currencyCode: currency })}`}
+              : `Place order · ${formatMoney(total)}`}
           </button>
           <p className="summary-note">
             This demo takes no real payment; submitting creates the order directly.
@@ -237,7 +251,7 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
         </div>
         <div className="summary-row summary-total">
           <span>Total</span>
-          <strong>{formatMoney({ amount: total.toFixed(2), currencyCode: currency })}</strong>
+          <strong>{formatMoney(total)}</strong>
         </div>
       </aside>
     </section>

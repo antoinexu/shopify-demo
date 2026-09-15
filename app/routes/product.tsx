@@ -11,7 +11,11 @@ export function meta({ data }: Route.MetaArgs) {
 
 export async function loader({ params }: Route.LoaderArgs) {
   const product = await getProductByHandle(params.handle);
-  if (!product) {
+  // A published Shopify product always has at least one variant, but an import
+  // can leave one with none — and the page indexes variants[0] for its price and
+  // its Add to cart button. Nothing to sell here, so treat it as not found
+  // rather than crashing the route.
+  if (!product || product.variants.length === 0) {
     throw new Response("Not Found", { status: 404 });
   }
   return { product };

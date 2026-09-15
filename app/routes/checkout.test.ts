@@ -174,6 +174,13 @@ describe("an invalid submission", () => {
     expect((await getCart(get(cookie))).lines).toHaveLength(2);
   });
 
+  it("echoes the chosen shipping method back, so a no-JS retry does not silently revert to standard", async () => {
+    const cookie = await cartWithTwoItems();
+    const result = await action(args(post({ ...VALID, shipping: "express", zip: "1" }, cookie)));
+
+    expect(unwrap(result).data).toMatchObject({ shippingId: "express" });
+  });
+
   it("rejects a shipping method that is not on offer rather than quietly billing standard", async () => {
     const cookie = await cartWithTwoItems();
     const result = await action(args(post({ ...VALID, shipping: "free-overnight" }, cookie)));
