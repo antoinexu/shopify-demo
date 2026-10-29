@@ -60,12 +60,15 @@ app/
 ├── lib/
 │   ├── catalog.server.ts   # Source switch: picks an adapter from CATALOG_SOURCE
 │   ├── catalog/
-│   │   ├── types.ts        # Types + formatMoney + the CatalogAdapter contract (client-safe)
+│   │   ├── types.ts        # Catalog types, the CatalogAdapter contract, toProductSummary (client-safe)
 │   │   ├── mock.server.ts  # In-memory fixtures (default)
 │   │   └── shopify.server.ts  # Live Storefront API adapter
+│   ├── money.ts            # Money type, formatMoney, integer-cent arithmetic (client-safe)
 │   ├── cart.server.ts      # Cart: cookie session read/write, pricing
+│   ├── cart.ts             # Cart rules shared with the UI: MAX_QUANTITY, clampQuantity
 │   ├── orders.server.ts    # Orders: in-memory store, order creation, form validation (server only)
-│   └── shipping.ts         # Shipping methods / US states / address type (client needs these, hence no .server)
+│   ├── shipping.ts         # Shipping methods / US states / address type (client needs these, hence no .server)
+│   └── test/routes.ts      # Test helpers for calling loaders and actions directly
 ├── components/             # Stateless presentational components
 ├── routes/                 # One file per route, each with its loader / action
 ├── routes.ts               # Route table
@@ -89,6 +92,12 @@ app/
 server from current product data (`getCart` in `cart.server.ts`), so whatever price the
 client sends is ignored. Stale lines for delisted products are skipped silently rather
 than crashing the page.
+
+**Money is arithmetic in integer cents.** Shopify sends amounts as decimal strings;
+`lib/money.ts` converts them to cents, does the sums there, and converts back only for
+display. The checkout summary uses the same functions as `createOrder`, so the total on
+the button is the total the order records. A cart that mixes currencies throws rather
+than adding them up.
 
 **Every cart write posts to the `/cart` action**, distinguished by a hidden `intent`
 field (`add` / `update` / `remove` / `clear`). The add-to-cart button lives on the
@@ -125,16 +134,22 @@ why the id comes from `crypto.randomUUID()` and never from `Math.random()`.
 npm test
 ```
 
-100 tests, no network and no browser. The weight sits where correctness is hardest
-to eyeball:
+No network and no browser. The weight sits where correctness is hardest to eyeball:
 
 | File | Covers |
 | --- | --- |
 | `lib/catalog/shopify.test.ts` | The Storefront adapter against a stubbed fetch: request shape, normalization of nullable fields, cursor pagination, batching, timeouts, HTTP and GraphQL errors |
 | `lib/cart.test.ts` | Cart writes through a real cookie round trip: quantity clamping, merge on re-add, delete at zero, server-side pricing |
 | `lib/orders.test.ts` | Checkout validation, field by field, with the US phone and ZIP formats spelled out |
+| `lib/money.test.ts` | Money formatting across currencies (including a zero-decimal one) and the cents round trip |
 | `lib/shipping.test.ts` | State table integrity and shipping method lookup |
-| `lib/catalog/types.test.ts` | Money formatting across currencies, including a zero-decimal one |
+| `lib/catalog/types.test.ts` | `toProductSummary`: what the home payload keeps, drops, and how sold-out is derived |
+| `routes/cart.test.ts` | The `/cart` action's intent dispatch, unknown-variant rejection, and the cookie it returns |
+| `routes/checkout.test.ts` | Empty-cart redirect, server-side order pricing, shipping fees, cart clearing, 400 on invalid input |
+| `routes/product.test.ts` | Product loader by handle and its 404s |
+| `routes/order.test.ts` | Order loader 404s for ids that were never issued |
+
+Route tests call the loader or action directly through the helpers in `lib/test/routes.ts`.
 
 ## Known limitations
 
@@ -144,8 +159,12 @@ to eyeball:
   write-everything-back cycle, so rapidly clicking +/− on different lines lets the later
   response overwrite the earlier one. A real implementation would hold a cart id
   server-side.
-- **Money is computed with JS floats** and then `toFixed(2)`. Fine at demo scale; switch
-  to decimals before taking real payments.
+- **The cents scale is fixed at 100.** Zero-decimal currencies such as JPY still display
+  correctly, but a store using them, or a three-decimal one, should scale per currency.
+- **Availability is enforced only in the UI.** The product page disables sold-out
+  variants, but the `/cart` action does not check `availableForSale` and checkout does not
+  recheck it, so a sold-out variant can still be added by a direct POST or ordered after
+  it sells out while sitting in a cart.
 - **No real payment integration** — submitting checkout creates the order directly.
 - **US-only addressing.** State is a 50-state + DC dropdown, ZIP accepts `12345` or
   `12345-6789`, and phone validation expects a 10-digit North American number.
