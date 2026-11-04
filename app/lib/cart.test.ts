@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   addToCart,
+  CartCapacityError,
   clearCart,
   getCart,
   getCartQuantity,
+  getCheckoutId,
   removeCartLine,
   updateCartLine,
 } from "./cart.server";
+import { MAX_CART_LINES } from "./cart";
 import { asRequestCookie } from "./test/routes";
 
 /**
@@ -54,6 +57,29 @@ describe("getCartQuantity", () => {
 });
 
 describe("addToCart", () => {
+  it("bounds distinct lines but still allows an existing line to be updated", async () => {
+    let cookie = "";
+    for (let i = 0; i < MAX_CART_LINES; i++) {
+      cookie = await addToCart(requestWith(cookie), `gid://shopify/ProductVariant/${10000000000000 + i}`, 1);
+    }
+    expect(Buffer.byteLength(cookie)).toBeLessThanOrEqual(4096);
+    await expect(addToCart(requestWith(cookie), HOODIE_S, 1)).rejects.toBeInstanceOf(CartCapacityError);
+    cookie = await addToCart(requestWith(cookie), "gid://shopify/ProductVariant/10000000000000", 2);
+    expect(await getCartQuantity(requestWith(cookie))).toBe(MAX_CART_LINES + 2);
+  });
+
+  it("turns an oversized serialized cookie into a capacity error", async () => {
+    await expect(addToCart(requestWith(), "x".repeat(5000), 1)).rejects.toBeInstanceOf(CartCapacityError);
+  });
+
+  it("gives independent carts different checkout identities and rotates them on writes", async () => {
+    const first = await addToCart(requestWith(), HOODIE_S, 1);
+    const second = await addToCart(requestWith(), HOODIE_S, 1);
+    const changed = await updateCartLine(requestWith(first), HOODIE_S, 2);
+    const ids = await Promise.all([first, second, changed].map(cookie => getCheckoutId(requestWith(cookie))));
+    expect(ids.every(Boolean)).toBe(true);
+    expect(new Set(ids).size).toBe(3);
+  });
   it("merges a repeat add into the existing line instead of duplicating it", async () => {
     const { request } = await replay([
       (r) => addToCart(r, HOODIE_S, 2),
@@ -110,7 +136,7 @@ describe("getCart", () => {
     expect(cart.subtotal.amount).toBe("236.00");
   });
 
-  it("drops a line whose variant no longer resolves instead of throwing", async () => {
+  it("keeps track of a deleted line so checkout can refuse to omit it", async () => {
     const { request } = await replay([
       (r) => addToCart(r, HOODIE_S, 1),
       (r) => addToCart(r, "gid://shopify/ProductVariant/does-not-exist", 1),
@@ -119,6 +145,7 @@ describe("getCart", () => {
     const cart = await getCart(request);
     expect(cart.lines).toHaveLength(1);
     expect(cart.lines[0].variantId).toBe(HOODIE_S);
+    expect(cart.missingItems).toEqual([{ variantId: "gid://shopify/ProductVariant/does-not-exist", quantity: 1 }]);
   });
 
   it("returns an empty cart for a request with no cookie", async () => {

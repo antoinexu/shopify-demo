@@ -89,10 +89,25 @@ app/
 
 ## Key design decisions
 
-**The cart stores only `variantId` + `quantity`.** Prices are always recomputed on the
+**Cart lines store only `variantId` + `quantity`.** Prices are always recomputed on the
 server from current product data (`getCart` in `cart.server.ts`), so whatever price the
-client sends is ignored. Stale lines for delisted products are skipped silently rather
-than crashing the page.
+client sends is ignored. Deleted variants block checkout until the customer opens
+the cart, where they are removed with a notice. On cart and checkout the header badge
+reuses the count those pages already resolved, so the catalog is never queried twice
+for one page. Cookie carts allow up to 30 different options, with a
+serialized-size check and a recoverable error when full.
+
+**Checkout is idempotent within one server process.** Every cart write assigns a
+random checkout identity in the signed cookie. Concurrent submissions and retries
+of that revision return the same order. The identity-to-order mapping lives beside
+the in-memory orders; a production implementation needs shared persistent storage
+with a unique constraint.
+
+**A changed quote needs confirmation.** The form describes the displayed items,
+prices, quantities and shipping method. The action compares it with current catalog
+data before creating an order. A changed price or a shipping selection made without
+JavaScript returns an updated summary for confirmation. Submitted quotes never set
+order prices.
 
 **Money is arithmetic in integer cents.** Shopify sends amounts as decimal strings;
 `lib/money.ts` converts them to cents, does the sums there, and converts back only for
@@ -108,6 +123,8 @@ of its own.
 **Progressive enhancement.** Add-to-cart and quantity changes submit through
 `useFetcher`, so the page never navigates. With JavaScript disabled they degrade to
 plain form POSTs and still work.
+Product option radios belong to the add-to-cart form, so native submissions carry
+the selected option without relying on a hidden value updated by JavaScript.
 
 **The `.server` suffix is load-bearing.** React Router only strips server code from
 `loader` / `action` / `middleware` / `headers`. The moment a component (or a module's
@@ -146,7 +163,8 @@ No network and no browser. The weight sits where correctness is hardest to eyeba
 | `lib/shipping.test.ts` | State table integrity and shipping method lookup |
 | `lib/catalog/types.test.ts` | `toProductSummary`: what the home payload keeps, drops, and how sold-out is derived |
 | `routes/cart.test.ts` | The `/cart` action's intent dispatch, unknown-variant rejection, and the cookie it returns |
-| `routes/checkout.test.ts` | Empty-cart redirect, server-side order pricing, shipping fees, cart clearing, 400 on invalid input |
+| `routes/checkout.test.ts` | Empty-cart redirect, server pricing, quote confirmation, idempotent submissions, deleted products, mixed cart problems, shipping and validation |
+| `routes/forms.test.ts` | SSR form structure and native option submission; no-JS shipping review and confirmation |
 | `routes/product.test.ts` | Product loader by handle and its 404s |
 | `routes/order.test.ts` | Order loader 404s for ids that were never issued |
 
@@ -176,7 +194,7 @@ Route tests call the loader or action directly through the helpers in `lib/test/
 - **A product with more than 250 variants is truncated.** `getProducts` pages through
   the whole catalog, but the variant list inside each product is a single page. A catalog
   with products that large should page the variants or log the overflow.
-- **The header badge counts delisted lines.** It reads the cookie without a catalog
-  lookup, deliberately, so it can transiently exceed what the cart page shows. The
-  number self-corrects the moment the cart is opened.
+- **Outside cart and checkout, the header badge reads the cookie without a catalog
+  lookup.** It can include recently delisted lines until the cart is opened, which
+  removes those lines from the cookie and corrects the count on that visit.
 - No lint configuration.

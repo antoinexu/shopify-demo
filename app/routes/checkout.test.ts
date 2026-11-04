@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Route } from "./+types/checkout";
 import { action, loader } from "./checkout";
 import { addToCart, getCart } from "~/lib/cart.server";
+import { catalog } from "~/lib/catalog.server";
 import { getOrder } from "~/lib/orders.server";
+import { checkoutQuote } from "~/lib/checkout";
+import { getShippingMethod } from "~/lib/shipping";
 import { asRequestCookie, routeArgs, unwrap } from "~/lib/test/routes";
 
 /**
@@ -58,7 +61,9 @@ async function cartWithTwoItems(): Promise<string> {
 /** Submits the checkout form and returns the redirect it produced. */
 async function placeOrder(overrides: Record<string, string> = {}, cookie?: string) {
   const items = cookie ?? (await cartWithTwoItems());
-  const response = await action(args(post({ ...VALID, ...overrides }, items)));
+  const cart = await getCart(get(items));
+  const quote = checkoutQuote(cart, getShippingMethod(overrides.shipping ?? VALID.shipping));
+  const response = await action(args(post({ ...VALID, quote, ...overrides }, items)));
 
   expect(response, "a valid submission must redirect").toBeInstanceOf(Response);
   return response as Response;
@@ -89,6 +94,17 @@ describe("loader", () => {
 });
 
 describe("a valid submission", () => {
+  it("returns the same order for concurrent and retried submissions of one cart", async () => {
+    const cookie = await cartWithTwoItems();
+    const [first, second] = await Promise.all([placeOrder({}, cookie), placeOrder({}, cookie)]);
+    expect(orderIdFrom(first)).toBe(orderIdFrom(second));
+    expect(orderIdFrom(await placeOrder({}, cookie))).toBe(orderIdFrom(first));
+  });
+
+  it("does not merge orders from independent carts with identical contents", async () => {
+    const [first, second] = await Promise.all([placeOrder(), placeOrder()]);
+    expect(orderIdFrom(first)).not.toBe(orderIdFrom(second));
+  });
   it("creates an order that is retrievable by the id in the redirect", async () => {
     const order = getOrder(orderIdFrom(await placeOrder()));
 
@@ -132,6 +148,70 @@ describe("a valid submission", () => {
     const first = orderIdFrom(await placeOrder());
     const second = orderIdFrom(await placeOrder());
     expect(first).not.toBe(second);
+  });
+});
+
+describe("quote confirmation", () => {
+  it("requires a fresh confirmation when catalog prices change after rendering", async () => {
+    const cookie = await cartWithTwoItems();
+    const cart = await getCart(get(cookie));
+    const quote = checkoutQuote(cart, getShippingMethod("standard"));
+    const resolve = catalog.getVariantsByIds.bind(catalog);
+    const spy = vi.spyOn(catalog, "getVariantsByIds").mockImplementationOnce(async ids =>
+      (await resolve(ids)).map(variant => ({ ...variant, price: { ...variant.price, amount: "100.00" } })),
+    );
+    try {
+      const result = await action(args(post({ ...VALID, quote }, cookie)));
+      expect(result).not.toBeInstanceOf(Response);
+      expect(unwrap(result).data).toMatchObject({ reviewRequired: true });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it("requires a fresh confirmation when no-JS shipping changes the total", async () => {
+    const cookie = await cartWithTwoItems();
+    const cart = await getCart(get(cookie));
+    const quote = checkoutQuote(cart, getShippingMethod("standard"));
+    const result = await action(args(post({ ...VALID, shipping: "express", quote }, cookie)));
+    expect(result).not.toBeInstanceOf(Response);
+    expect(unwrap(result).data).toMatchObject({ reviewRequired: true, shippingId: "express", values: { name: VALID.name } });
+    expect((await getCart(get(cookie))).lines).toHaveLength(2);
+    const order = getOrder(orderIdFrom(await placeOrder({ shipping: "express" }, cookie)))!;
+    expect(order.total.amount).toBe("162.00");
+  });
+
+  it("does not let an absent or tampered quote place an order", async () => {
+    const cookie = await cartWithTwoItems();
+    for (const quote of ["", "1.00"]) {
+      const result = await action(args(post({ ...VALID, quote }, cookie)));
+      expect(unwrap(result).data).toMatchObject({ reviewRequired: true });
+      expect(unwrap(result).status).toBe(409);
+    }
+  });
+});
+
+describe("a cart with several problems at once", () => {
+  it("reports both the sold-out line and the deleted one", async () => {
+    let cookie = await addToCart(get(), HOODIE_L_SOLD_OUT, 1);
+    cookie = await addToCart(get(cookie), "gid://shopify/ProductVariant/deleted", 1);
+    const result = await action(args(post(VALID, cookie)));
+
+    expect(unwrap(result).status).toBe(409);
+    const { errors } = unwrap(result).data as { errors: { cart: string } };
+    expect(errors.cart).toContain("Aurora Hoodie");
+    expect(errors.cart).toContain("no longer available");
+  });
+});
+
+describe("deleted cart lines", () => {
+  it.each([true, false])("blocks checkout instead of silently omitting deleted lines (surviving line: %s)", async (hasSurvivor) => {
+    let cookie = hasSurvivor ? await addToCart(get(), HOODIE_S, 1) : undefined;
+    cookie = await addToCart(get(cookie), "gid://shopify/ProductVariant/deleted", 1);
+    const result = await action(args(post(VALID, cookie)));
+    expect(unwrap(result).status).toBe(409);
+    expect(unwrap(result).data).toMatchObject({ errors: { cart: expect.stringContaining("no longer available") } });
+    expect((await getCart(get(cookie))).missingItems).toHaveLength(1);
+    expect((await loader(args(get(cookie)))).cart.missingItems).toHaveLength(1);
   });
 });
 

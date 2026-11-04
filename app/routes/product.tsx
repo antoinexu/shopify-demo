@@ -44,33 +44,27 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
         <p className="product-price">{formatMoney(selected.price)}</p>
         <p className="product-desc">{product.description}</p>
 
-        <fieldset className="variants">
-          <legend>Options</legend>
-          {product.variants.map((variant) => (
-            <label
-              key={variant.id}
-              className={[
-                "variant",
-                variant.id === selectedId ? "is-selected" : "",
-                variant.availableForSale ? "" : "is-disabled",
-              ]
-                .join(" ")
-                .trim()}
-            >
-              <input
-                type="radio"
-                name="variant"
-                value={variant.id}
-                checked={variant.id === selectedId}
-                disabled={!variant.availableForSale}
-                onChange={() => setSelectedId(variant.id)}
-              />
-              <span>{variant.title}</span>
-            </label>
-          ))}
-        </fieldset>
-
-        <AddToCartForm variantId={selected.id} disabled={!selected.availableForSale} />
+        <AddToCartForm variantId={selected.id} disabled={!selected.availableForSale}>
+          <fieldset className="variants">
+            <legend>Options</legend>
+            {product.variants.map((variant) => (
+              <label
+                key={variant.id}
+                className={variant.availableForSale ? "variant" : "variant is-disabled"}
+              >
+                <input
+                  type="radio"
+                  name="variantId"
+                  value={variant.id}
+                  checked={variant.id === selectedId}
+                  disabled={!variant.availableForSale}
+                  onChange={() => setSelectedId(variant.id)}
+                />
+                <span>{variant.title} · {formatMoney(variant.price)}</span>
+              </label>
+            ))}
+          </fieldset>
+        </AddToCartForm>
       </div>
     </article>
   );

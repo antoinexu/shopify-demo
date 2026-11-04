@@ -10,6 +10,9 @@
 /** Per-line ceiling. High enough never to annoy a real customer, low enough to bound the cookie. */
 export const MAX_QUANTITY = 99;
 
+/** Leave room for signatures and checkout identity in the cookie. */
+export const MAX_CART_LINES = 30;
+
 /** Coerces anything a form can submit into a storable quantity: an integer in [0, MAX_QUANTITY]. */
 export function clampQuantity(quantity: number): number {
   if (!Number.isFinite(quantity)) return 0;

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { data, Form, Link, redirect, useNavigation } from "react-router";
 import type { Route } from "./+types/checkout";
-import { clearCart, getCart } from "~/lib/cart.server";
+import { clearCart, getCart, getCheckoutId } from "~/lib/cart.server";
 // Used only inside loader / action, so React Router strips these from the client bundle
-import { createOrder, validateCheckout } from "~/lib/orders.server";
+import { createOrder, getOrderForCheckout, validateCheckout } from "~/lib/orders.server";
+import { checkoutQuote } from "~/lib/checkout";
 // Used inside the component, so these must come from a module without the .server suffix
 import {
   SHIPPING_METHODS,
@@ -20,19 +21,26 @@ export function meta(_: Route.MetaArgs) {
 export async function loader({ request }: Route.LoaderArgs) {
   const cart = await getCart(request);
   // An empty cart has no business on the checkout page
-  if (cart.lines.length === 0) {
+  if (cart.lines.length === 0 && cart.missingItems.length === 0) {
     throw redirect("/cart");
   }
   return { cart };
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const checkoutId = await getCheckoutId(request);
+  if (checkoutId) {
+    const existing = getOrderForCheckout(checkoutId);
+    if (existing) {
+      return redirect(`/orders/${existing.id}`, { headers: { "Set-Cookie": await clearCart(request) } });
+    }
+  }
   const form = await request.formData();
   const { errors, address, shipping } = validateCheckout(form);
 
   // Guard against the cart being emptied while the customer sat on this page
   const cart = await getCart(request);
-  if (cart.lines.length === 0) {
+  if (cart.lines.length === 0 && cart.missingItems.length === 0) {
     throw redirect("/cart");
   }
 
@@ -40,23 +48,37 @@ export async function action({ request }: Route.ActionArgs) {
   // page and this form both render from a load that may be minutes old, and a
   // line can sell out while it sits in the cart; this is the last point before
   // an order exists.
+  // Both problems can occur together; report both rather than letting one hide the other
+  const cartProblems: string[] = [];
   const soldOut = cart.lines.filter((line) => !line.variant.availableForSale);
   if (soldOut.length > 0) {
     const names = soldOut.map((line) => `${line.variant.product.title} (${line.variant.title})`);
-    errors.cart = `Sold out since you added it: ${names.join(", ")}. Remove it from your cart to continue.`;
+    cartProblems.push(`Sold out since you added it: ${names.join(", ")}. Remove it from your cart to continue.`);
   }
+  if (cart.missingItems.length > 0) {
+    cartProblems.push("Some items are no longer available. Review your cart before placing an order.");
+  }
+  if (cartProblems.length > 0) errors.cart = cartProblems.join(" ");
 
   if (Object.keys(errors).length > 0) {
     // shippingId rides along with the address values: without JavaScript the page
     // is re-rendered from scratch, and a customer who picked Express should not
     // find themselves back on Standard just because a ZIP code was malformed.
     return data(
-      { errors, values: address, shippingId: shipping.id },
-      { status: soldOut.length > 0 ? 409 : 400 },
+      { errors, values: address, shippingId: shipping.id, reviewRequired: false },
+      { status: errors.cart ? 409 : 400 },
     );
   }
 
-  const order = createOrder(cart, address, shipping);
+  if (form.get("quote") !== checkoutQuote(cart, shipping)) {
+    // 409 like the other refusals: no order was created, the customer must resubmit
+    return data({ errors, values: address, shippingId: shipping.id, reviewRequired: true }, { status: 409 });
+  }
+
+  // Every cart write sets a checkout id, so a cart always has one. The fallback
+  // only covers a cookie written by hand: it still gets an order, just without
+  // duplicate-submit protection.
+  const order = createOrder(cart, address, shipping, checkoutId ?? crypto.randomUUID());
   const cookie = await clearCart(request);
 
   return redirect(`/orders/${order.id}`, { headers: { "Set-Cookie": cookie } });
@@ -96,7 +118,7 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
 
   // Known sold out at load time: say so up front and block the submit, rather
   // than letting the customer fill in the whole form only for the action to refuse it.
-  const blocked = cart.lines.some((line) => !line.variant.availableForSale);
+  const blocked = cart.missingItems.length > 0 || cart.lines.some((line) => !line.variant.availableForSale);
 
   return (
     <section className="checkout">
@@ -108,12 +130,16 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
 
         {blocked || errors.cart ? (
           <p className="field-error" role="alert">
-            {errors.cart ?? "Something in your cart has sold out."}{" "}
+            {errors.cart ?? "Something in your cart is no longer available."}{" "}
             <Link to="/cart">Review your cart</Link>
           </p>
         ) : null}
 
         <Form method="post" noValidate>
+          <input type="hidden" name="quote" value={checkoutQuote(cart, shipping)} />
+          {actionData?.reviewRequired ? (
+            <p role="status">Your order total has been updated. Review the summary and place your order to confirm.</p>
+          ) : null}
           <fieldset className="field-group" disabled={submitting}>
             <legend>Shipping details</legend>
 
@@ -209,7 +235,7 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
             {SHIPPING_METHODS.map((method) => (
               <label
                 key={method.id}
-                className={method.id === shippingId ? "ship-option is-selected" : "ship-option"}
+                className="ship-option"
               >
                 <input
                   type="radio"

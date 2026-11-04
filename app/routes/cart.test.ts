@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { createMemoryRouter } from "react-router";
 import type { Route } from "./+types/cart";
 import { action, loader } from "./cart";
-import { addToCart, getCart } from "~/lib/cart.server";
+import { addToCart, getCart, getCartQuantity } from "~/lib/cart.server";
+import { MAX_CART_LINES } from "~/lib/cart";
+import { loader as rootLoader, shouldRevalidate } from "~/root";
+import type { Route as RootRoute } from "../+types/root";
 import { asRequestCookie, routeArgs, unwrap } from "~/lib/test/routes";
 
 /**
@@ -50,8 +54,44 @@ async function run(fields: Record<string, string>, cookie?: string): Promise<str
 }
 
 describe("loader", () => {
+  it("keeps the badge right on the cart page and after leaving it", async () => {
+    let cookie = await addToCart(get(), HOODIE_S, 2);
+    cookie = await addToCart(get(cookie), "gid://shopify/ProductVariant/deleted", 3);
+    const withCookie = (request: Request) => new Request(request, { headers: { Cookie: asRequestCookie(cookie) } });
+    const router = createMemoryRouter([{
+      id: "root", path: "/", shouldRevalidate,
+      loader: ({ request }) => rootLoader(routeArgs<RootRoute.LoaderArgs>(withCookie(request))),
+      children: [
+        { index: true },
+        { id: "routes/cart", path: "cart", loader: async ({ request }) => {
+          const result = await loader(args(withCookie(request)));
+          cookie = new Headers(result.init?.headers).get("Set-Cookie") ?? cookie;
+          return result;
+        } },
+      ],
+    }], { initialEntries: ["/"] });
+    try {
+      if (!router.state.initialized) {
+        await new Promise<void>(resolve => {
+          const unsubscribe = router.subscribe(state => {
+            if (state.initialized) { unsubscribe(); resolve(); }
+          });
+        });
+      }
+      // Away from the cart the badge is the cheap cookie count, delisted line included
+      expect(router.state.loaderData.root.cartQuantity).toBe(5);
+      await router.navigate("/cart");
+      // On the cart page Layout shows the cart loader's resolved count instead
+      expect(router.state.loaderData["routes/cart"].cart.totalQuantity).toBe(2);
+      // Leaving the cart reruns the root loader against the cleaned cookie
+      await router.navigate("/");
+      expect(router.state.loaderData.root.cartQuantity).toBe(2);
+    } finally {
+      router.dispose();
+    }
+  });
   it("returns an empty cart when there is no cookie", async () => {
-    const { cart } = await loader(args(get()));
+    const { cart } = (await loader(args(get()))).data;
     expect(cart.lines).toEqual([]);
     expect(cart.totalQuantity).toBe(0);
   });
@@ -59,9 +99,31 @@ describe("loader", () => {
   it("returns the priced cart for the request's cookie", async () => {
     const cookie = await addToCart(get(), HOODIE_S, 2);
 
-    const { cart } = await loader(args(get(cookie)));
+    const { cart } = (await loader(args(get(cookie)))).data;
     expect(cart.lines).toHaveLength(1);
     expect(cart.subtotal.amount).toBe("178.00");
+  });
+
+  it("removes deleted lines from the cookie and corrects the badge on the same visit", async () => {
+    let cookie = await addToCart(get(), HOODIE_S, 2);
+    cookie = await addToCart(get(cookie), "gid://shopify/ProductVariant/deleted", 3);
+    const request = get(cookie);
+    const result = await loader(args(request));
+    expect(result.data.cart.missingItems).toHaveLength(1);
+    // The badge on this visit comes from the cart loader's own count
+    expect(result.data.cart.totalQuantity).toBe(2);
+    const cleanedCookie = new Headers(result.init?.headers).get("Set-Cookie")!;
+    expect(cleanedCookie).toBeTruthy();
+    expect(await getCartQuantity(get(cleanedCookie))).toBe(2);
+    expect((await getCart(get(cleanedCookie))).missingItems).toEqual([]);
+  });
+
+  it("shows the removal even when every cart line was deleted", async () => {
+    const cookie = await addToCart(get(), "gid://shopify/ProductVariant/deleted", 1);
+    const result = await loader(args(get(cookie)));
+    expect(result.data.cart.lines).toEqual([]);
+    expect(result.data.cart.missingItems).toHaveLength(1);
+    expect(new Headers(result.init?.headers).get("Set-Cookie")).toBeTruthy();
   });
 });
 
@@ -84,6 +146,17 @@ describe("action dispatch", () => {
 });
 
 describe("intent=add", () => {
+  it("returns an actionable capacity error without changing the cart", async () => {
+    let cookie = "";
+    for (let i = 0; i < MAX_CART_LINES; i++) {
+      cookie = await addToCart(get(cookie), `gid://shopify/ProductVariant/${10000000000000 + i}`, 1);
+    }
+    const result = await action(args(post({ intent: "add", variantId: HOODIE_S }, cookie)));
+    expect(unwrap(result).status).toBe(400);
+    expect(unwrap(result).data).toMatchObject({ ok: false, code: "CART_FULL" });
+    expect(unwrap(result).headers.get("Set-Cookie")).toBeNull();
+    expect(await getCartQuantity(get(cookie))).toBe(MAX_CART_LINES);
+  });
   it("adds the variant and sets a cookie the next request can read", async () => {
     const cookie = await run({ intent: "add", variantId: HOODIE_S, quantity: "2" });
 

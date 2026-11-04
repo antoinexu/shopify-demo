@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useFetcher } from "react-router";
 
 type Props = {
@@ -6,6 +6,7 @@ type Props = {
   disabled?: boolean;
   quantity?: number;
   label?: string;
+  children?: ReactNode;
 };
 
 /**
@@ -13,7 +14,7 @@ type Props = {
  * degrades to a plain form POST to /cart and still adds the item -- that is
  * React Router progressive enhancement.
  */
-export function AddToCartForm({ variantId, disabled = false, quantity = 1, label = "Add to cart" }: Props) {
+export function AddToCartForm({ variantId, disabled = false, quantity = 1, label = "Add to cart", children }: Props) {
   const fetcher = useFetcher();
   const [justAdded, setJustAdded] = useState(false);
   // fetcher.state runs idle -> submitting -> loading -> idle. Comparing only the
@@ -26,9 +27,9 @@ export function AddToCartForm({ variantId, disabled = false, quantity = 1, label
   // A rejected add (the variant sold out after the page loaded) comes back as
   // data rather than a thrown error. Scoped to the variant it was about, so
   // picking another option clears it.
-  const result = fetcher.data as { ok: boolean; variantId?: string; message?: string } | undefined;
+  const result = fetcher.data as { ok: boolean; variantId?: string; code?: string; message?: string } | undefined;
   const rejected = result?.ok === false && result.variantId === variantId ? result.message : undefined;
-  const soldOut = disabled || rejected !== undefined;
+  const soldOut = disabled || (rejected !== undefined && result?.code === "SOLD_OUT");
 
   useEffect(() => {
     if (prevState.current !== "idle" && fetcher.state === "idle") {
@@ -50,7 +51,7 @@ export function AddToCartForm({ variantId, disabled = false, quantity = 1, label
   return (
     <fetcher.Form method="post" action="/cart" className="add-form">
       <input type="hidden" name="intent" value="add" />
-      <input type="hidden" name="variantId" value={variantId} />
+      {children ?? <input type="hidden" name="variantId" value={variantId} />}
       <input type="hidden" name="quantity" value={quantity} />
       <button type="submit" className="button" disabled={soldOut || busy}>
         {soldOut ? "Sold out" : busy ? "Adding…" : justAdded ? "Added ✓" : label}

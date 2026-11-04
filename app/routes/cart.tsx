@@ -2,9 +2,11 @@ import { data, Link, useFetcher } from "react-router";
 import type { Route } from "./+types/cart";
 import {
   addToCart,
+  CartCapacityError,
   clearCart,
   getCart,
   removeCartLine,
+  removeMissingItems,
   updateCartLine,
   type CartLine,
 } from "~/lib/cart.server";
@@ -18,7 +20,10 @@ export function meta(_: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  return { cart: await getCart(request) };
+  const cart = await getCart(request);
+  return data({ cart }, cart.missingItems.length > 0
+    ? { headers: { "Set-Cookie": await removeMissingItems(request, cart) } }
+    : undefined);
 }
 
 /** Every cart write in the app posts here; `intent` selects the operation. */
@@ -45,11 +50,19 @@ export async function action({ request }: Route.ActionArgs) {
       // instead of thrown, which would replace the whole page with the error boundary.
       if (!variant.availableForSale) {
         return data(
-          { ok: false as const, intent, variantId, message: "This option just sold out." },
+          { ok: false as const, intent, variantId, code: "SOLD_OUT", message: "This option just sold out." },
           { status: 409 },
         );
       }
-      cookie = await addToCart(request, variantId, quantity);
+      try {
+        cookie = await addToCart(request, variantId, quantity);
+      } catch (error) {
+        if (!(error instanceof CartCapacityError)) throw error;
+        return data(
+          { ok: false as const, intent, variantId, code: "CART_FULL", message: error.message },
+          { status: 400 },
+        );
+      }
       break;
     }
     case "update":
@@ -76,12 +89,18 @@ export default function CartPage({ loaderData, actionData }: Route.ComponentProp
 
   // Only reached without JavaScript: a plain form POST to /cart renders this
   // page, while the fetcher path shows the message on the product page instead.
-  const notice =
-    actionData && !actionData.ok ? (
-      <p className="field-error" role="alert">
-        {actionData.message}
-      </p>
-    ) : null;
+  const notice = (
+    <>
+      {cart.missingItems.length > 0 ? (
+        <p role="status">Some items are no longer available and were removed. Please review your cart.</p>
+      ) : null}
+      {actionData && !actionData.ok ? (
+        <p className="field-error" role="alert">
+          {actionData.message}
+        </p>
+      ) : null}
+    </>
+  );
 
   if (cart.lines.length === 0) {
     return (

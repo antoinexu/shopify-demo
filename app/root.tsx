@@ -7,12 +7,21 @@ import {
   Scripts,
   ScrollRestoration,
   useRouteLoaderData,
+  type ShouldRevalidateFunction,
 } from "react-router";
 import type { Route } from "./+types/root";
 import { Header } from "~/components/Header";
 import { catalogSource } from "~/lib/catalog.server";
 import { getCartQuantity } from "~/lib/cart.server";
+import type { loader as cartLoader } from "./routes/cart";
+import type { loader as checkoutLoader } from "./routes/checkout";
 import "./styles/app.css";
+
+// The cart loader removes delisted lines from the cookie. The root loader only
+// reruns after actions by default, so without this the badge would keep the
+// old count after leaving the cart. Rerunning is cheap: it only reads the cookie.
+export const shouldRevalidate: ShouldRevalidateFunction = ({ currentUrl, nextUrl, defaultShouldRevalidate }) =>
+  currentUrl.pathname !== nextUrl.pathname || defaultShouldRevalidate;
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Deliberately the cheap count: this loader runs on every page, so it must not
@@ -24,6 +33,14 @@ export function Layout({ children }: { children: ReactNode }) {
   // The ErrorBoundary renders through Layout too, and at that point the root
   // loader may never have run -- hence the fallback.
   const data = useRouteLoaderData<typeof loader>("root");
+  // Cart and checkout already resolve the cart against the catalog, so their
+  // count is exact. Reusing it avoids a second catalog lookup in the root loader.
+  // Both hooks are called unconditionally: `??` would skip the second one on
+  // some renders and break the rules of hooks.
+  const cartPage = useRouteLoaderData<typeof cartLoader>("routes/cart");
+  const checkoutPage = useRouteLoaderData<typeof checkoutLoader>("routes/checkout");
+  const pageCart = cartPage?.cart ?? checkoutPage?.cart;
+  const cartQuantity = pageCart?.totalQuantity ?? data?.cartQuantity ?? 0;
 
   return (
     <html lang="en">
@@ -34,7 +51,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <Links />
       </head>
       <body>
-        <Header cartQuantity={data?.cartQuantity ?? 0} />
+        <Header cartQuantity={cartQuantity} />
         <main className="main">{children}</main>
         <footer className="footer">
           <p>

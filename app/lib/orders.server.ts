@@ -40,6 +40,12 @@ export type Order = {
 };
 
 const ORDERS = new Map<string, Order>();
+const CHECKOUT_ORDERS = new Map<string, string>();
+
+export function getOrderForCheckout(checkoutId: string): Order | null {
+  const orderId = CHECKOUT_ORDERS.get(checkoutId);
+  return orderId ? getOrder(orderId) : null;
+}
 
 /**
  * The order id doubles as the access credential — the order page has no auth,
@@ -61,7 +67,10 @@ function orderNumber(date: Date): string {
   return `MRD-${stamp}-${suffix}`;
 }
 
-export function createOrder(cart: Cart, address: ShippingAddress, shipping: ShippingMethod): Order {
+export function createOrder(cart: Cart, address: ShippingAddress, shipping: ShippingMethod, checkoutId: string): Order {
+  // Synchronous check + insert is atomic inside this demo's single process.
+  const existing = getOrderForCheckout(checkoutId);
+  if (existing) return existing;
   const currency = cart.subtotal.currencyCode;
   // Totals in integer cents. This is the number the customer is charged, so it is
   // the last place that should inherit float rounding — see toMinorUnits.
@@ -90,6 +99,7 @@ export function createOrder(cart: Cart, address: ShippingAddress, shipping: Ship
   };
 
   ORDERS.set(order.id, order);
+  CHECKOUT_ORDERS.set(checkoutId, order.id);
   return order;
 }
 
