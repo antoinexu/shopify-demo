@@ -66,7 +66,7 @@ export const PLACEHOLDER_IMAGE: ProductImage = {
  * both — a description plus up to 250 variants each. Handing the full shape to
  * the home loader means all of it is serialized into the SSR payload and shipped
  * to the browser to be thrown away: harmless against six fixtures, and a
- * multi-megabyte document against a migrated store with a few thousand products.
+ * multi-megabyte document against a real store with a few thousand products.
  *
  * Trimming happens in the loader, so the cost scales with what is displayed
  * rather than with what the catalog happens to hold.

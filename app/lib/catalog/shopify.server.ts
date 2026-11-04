@@ -1,9 +1,8 @@
 /**
  * Live Shopify Storefront API adapter.
  *
- * Point this at a migrated store and the whole storefront becomes a verification
- * harness: if the product grid, variant picker, prices and availability all render
- * correctly, the catalog half of the migration landed.
+ * Reads products from a real store and normalizes them into the same shapes the
+ * mock adapter returns, so no component can tell the two sources apart.
  *
  * Only ever loaded when CATALOG_SOURCE=shopify — see ../catalog.server.ts.
  */
@@ -131,9 +130,9 @@ async function storefront<T>(query: string, variables: Record<string, unknown> =
 
 /**
  * variants(first: 250) is the page ceiling. Shopify caps a product at 3 option
- * dimensions, and products that exceed the variant ceiling need pagination —
- * exactly the products an OpenCart import is most likely to produce, so a real
- * migration should log them rather than silently truncate.
+ * dimensions, and products that exceed the variant ceiling need pagination. A
+ * catalog that has such products should page them or log them rather than
+ * silently truncate.
  */
 const PRODUCT_FIELDS = `#graphql
   fragment ProductFields on Product {
@@ -242,9 +241,8 @@ export const shopifyCatalog: CatalogAdapter = {
   /**
    * Walks every page rather than taking the first N.
    *
-   * This matters most when the app is used to verify a migration: a single-page
-   * fetch renders 100 products from a store that holds 800, everything looks
-   * right, and the missing 700 are never noticed. Silently truncating is worse
+   * A single-page fetch renders 100 products from a store that holds 800,
+   * everything looks right, and the missing 700 are never noticed. Silently truncating is worse
    * than failing.
    */
   async getProducts() {

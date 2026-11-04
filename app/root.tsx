@@ -39,9 +39,8 @@ export function Layout({ children }: { children: ReactNode }) {
         <footer className="footer">
           <p>
             Shopify Demo &middot; React Router v7 &middot; catalog:{" "}
-            {/* Which backend served this page. Essential when the app is pointed at a
-                migrated store: you should never have to guess whether you are looking
-                at fixtures or the real thing. */}
+            {/* Which backend served this page, so you never have to guess whether
+                you are looking at fixtures or a real store. */}
             <span className={data?.catalogSource === "shopify" ? "source-live" : "source-mock"}>
               {data?.catalogSource ?? "unknown"}
             </span>

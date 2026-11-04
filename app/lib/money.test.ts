@@ -4,7 +4,7 @@ import { formatMoney, fromMinorUnits, toMinorUnits } from "./money";
 /**
  * Money arrives from Shopify as a decimal string plus a currency code, never a
  * number. Formatting has to honour whatever currency the store actually uses —
- * hardcoding a symbol is a bug that only shows up after a migration.
+ * hardcoding a symbol is a bug that only shows up against a non-USD store.
  */
 describe("formatMoney", () => {
   it("formats USD", () => {

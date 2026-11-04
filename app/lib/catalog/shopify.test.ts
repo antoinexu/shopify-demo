@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CatalogAdapter } from "./types";
 
 /**
- * The adapter is the migration-critical seam: everything the storefront renders
+ * The adapter is the seam that matters most: everything the storefront renders
  * about a live store passes through its normalization. These tests drive it with
  * a stubbed fetch, focusing on the shapes a real Shopify response actually
  * produces — nullable fields, missing images, deleted variants, paged results.

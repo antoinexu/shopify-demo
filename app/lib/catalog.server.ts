@@ -25,8 +25,8 @@ function selectAdapter(): CatalogAdapter {
   const requested = process.env.CATALOG_SOURCE ?? "mock";
   const adapter = SOURCES[requested];
 
-  // Fail loudly. Silently falling back to mock data is how you end up "verifying"
-  // a migration against fixtures and declaring success.
+  // Fail loudly. Silently falling back to mock data is how you end up testing
+  // against fixtures while believing you are looking at the real store.
   if (!adapter) {
     throw new Error(
       `Unknown CATALOG_SOURCE "${requested}". Expected one of: ${Object.keys(SOURCES).join(", ")}`,

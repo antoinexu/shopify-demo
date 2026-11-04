@@ -7,9 +7,10 @@ The catalog is **pluggable**: it runs on in-memory fixtures by default, or again
 live Shopify Storefront API by setting one environment variable. The data shapes mirror
 the Storefront API throughout, which is what makes the two interchangeable.
 
-That makes it useful beyond a demo — point it at a freshly migrated store and it becomes
-a verification harness: if the grid, variant picker, prices and availability all render,
-the catalog half of the migration landed.
+In Shopify terms this is a **headless** storefront: the pages are this app's own React
+code rather than a Shopify theme, and only the data comes from Shopify. Today that covers
+the catalog; the cart and orders are still local (see
+[Wiring up real Shopify](#wiring-up-real-shopify)).
 
 ## Getting started
 
@@ -173,9 +174,8 @@ Route tests call the loader or action directly through the helpers in `lib/test/
   `altText`, null `description`, imageless products, deleted variants, paged results,
   timeouts. Treat the first run against a live store as the real test.
 - **A product with more than 250 variants is truncated.** `getProducts` pages through
-  the whole catalog, but the variant list inside each product is a single page. Products
-  that large are exactly what an OpenCart import tends to produce, so a real migration
-  should page them or log the overflow.
+  the whole catalog, but the variant list inside each product is a single page. A catalog
+  with products that large should page the variants or log the overflow.
 - **The header badge counts delisted lines.** It reads the cookie without a catalog
   lookup, deliberately, so it can transiently exceed what the cart page shows. The
   number self-corrects the moment the cart is opened.
