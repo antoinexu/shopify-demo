@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { createMemoryRouter } from "react-router";
 import type { Route } from "./+types/checkout";
-import { action, loader } from "./checkout";
+import { action, loader, shouldRevalidate } from "./checkout";
 import { addToCart, getCart } from "~/lib/cart.server";
 import { catalog } from "~/lib/catalog.server";
 import { getOrder } from "~/lib/orders.server";
@@ -186,6 +187,67 @@ describe("quote confirmation", () => {
       const result = await action(args(post({ ...VALID, quote }, cookie)));
       expect(unwrap(result).data).toMatchObject({ reviewRequired: true });
       expect(unwrap(result).status).toBe(409);
+    }
+  });
+});
+
+describe("quote confirmation with JavaScript on", () => {
+  it("reloads the changed prices after the 409, so the second submit can succeed", async () => {
+    const cookie = await cartWithTwoItems();
+    const withCookie = (request: Request) => {
+      const headers = new Headers(request.headers);
+      headers.set("Cookie", asRequestCookie(cookie));
+      return new Request(request, { headers });
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          id: "checkout",
+          path: "/checkout",
+          shouldRevalidate,
+          loader: ({ request }) => loader(routeArgs<Route.LoaderArgs>(withCookie(request))),
+          action: ({ request }) => action(routeArgs<Route.ActionArgs>(withCookie(request))),
+        },
+        { path: "/orders/:id" },
+      ],
+      { initialEntries: ["/checkout"] },
+    );
+    const submit = (quote: string) => {
+      const form = new FormData();
+      for (const [key, value] of Object.entries({ ...VALID, quote })) form.set(key, value);
+      return router.navigate("/checkout", { formMethod: "post", formData: form });
+    };
+    const shownQuote = () =>
+      checkoutQuote(router.state.loaderData.checkout.cart, getShippingMethod("standard"));
+
+    const resolve = catalog.getVariantsByIds.bind(catalog);
+    const spy = vi.spyOn(catalog, "getVariantsByIds");
+    try {
+      await router.initialize();
+      if (!router.state.initialized) {
+        await new Promise<void>((done) => {
+          const stop = router.subscribe((state) => state.initialized && (stop(), done()));
+        });
+      }
+      const staleQuote = shownQuote();
+
+      // Every price changes after the page was rendered
+      spy.mockImplementation(async (ids) =>
+        (await resolve(ids)).map((variant) => ({ ...variant, price: { ...variant.price, amount: "100.00" } })),
+      );
+
+      await submit(staleQuote);
+      expect(router.state.actionData?.checkout).toMatchObject({ reviewRequired: true });
+      // Without the revalidation the page would still show 147.00 and loop forever
+      expect(router.state.loaderData.checkout.cart.subtotal.amount).toBe("200.00");
+
+      await submit(shownQuote());
+      expect(router.state.location.pathname).toMatch(/^\/orders\/[0-9a-f]{32}$/);
+      const order = getOrder(router.state.location.pathname.split("/").pop()!)!;
+      expect(order.total.amount).toBe("200.00");
+    } finally {
+      spy.mockRestore();
+      router.dispose();
     }
   });
 });

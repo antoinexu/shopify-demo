@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { data, Form, Link, redirect, useNavigation } from "react-router";
+import { data, Form, Link, redirect, useNavigation, type ShouldRevalidateFunction } from "react-router";
 import type { Route } from "./+types/checkout";
 import { clearCart, getCart, getCheckoutId } from "~/lib/cart.server";
 // Used only inside loader / action, so React Router strips these from the client bundle
@@ -17,6 +17,15 @@ import { formatMoney, fromMinorUnits, toMinorUnits } from "~/lib/money";
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Checkout · MERIDIAN" }];
 }
+
+/**
+ * React Router skips revalidation after an action that returns 4xx. For a quote
+ * refusal that would be fatal with JavaScript on: the page would keep the old
+ * prices and the old hidden quote, so every resubmit would be refused again.
+ * Reload whenever the refusal is about the cart rather than a form field.
+ */
+export const shouldRevalidate: ShouldRevalidateFunction = ({ actionResult, defaultShouldRevalidate }) =>
+  actionResult?.reviewRequired === true || Boolean(actionResult?.errors?.cart) || defaultShouldRevalidate;
 
 export async function loader({ request }: Route.LoaderArgs) {
   const cart = await getCart(request);
