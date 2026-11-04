@@ -29,7 +29,8 @@ npm test             # vitest, single run
 npm run test:watch   # vitest in watch mode
 ```
 
-Requires Node 20+ (the code uses the global `crypto.randomUUID`).
+Requires Node 20+ to run the app (the code uses the global `crypto.randomUUID`), and
+Node 22.12+ to run the tests, which is what Vitest 5 supports.
 
 ## Environment
 
