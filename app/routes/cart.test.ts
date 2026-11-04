@@ -18,6 +18,8 @@ import { asRequestCookie, routeArgs, unwrap } from "~/lib/test/routes";
 
 const HOODIE_S = "gid://shopify/ProductVariant/101";
 const TOTE = "gid://shopify/ProductVariant/201";
+/** availableForSale: false in the mock fixtures */
+const HOODIE_L_SOLD_OUT = "gid://shopify/ProductVariant/103";
 
 function post(fields: Record<string, string>, cookie?: string): Request {
   const body = new FormData();
@@ -103,6 +105,23 @@ describe("intent=add", () => {
     expect(unwrap(thrown).status).toBe(400);
     // No cookie was set, so nothing can have been stored
     expect(unwrap(thrown).headers.get("Set-Cookie")).toBeNull();
+  });
+
+  it("refuses a sold-out variant with a 409 the form can show, and writes nothing", async () => {
+    // The product page disables this option; a direct POST is the only way to send it
+    const result = await action(args(post({ intent: "add", variantId: HOODIE_L_SOLD_OUT })));
+
+    const { status, data, headers } = unwrap(result);
+    expect(status).toBe(409);
+    expect(data).toMatchObject({ ok: false, variantId: HOODIE_L_SOLD_OUT, message: expect.any(String) });
+    expect(headers.get("Set-Cookie")).toBeNull();
+  });
+
+  it("returns the sold-out refusal rather than throwing it, so the product page survives", async () => {
+    // A thrown response would replace the page with the error boundary
+    await expect(
+      action(args(post({ intent: "add", variantId: HOODIE_L_SOLD_OUT }))),
+    ).resolves.toBeDefined();
   });
 
   it("merges a repeat add into the existing line", async () => {

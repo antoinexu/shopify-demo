@@ -23,15 +23,23 @@ export function AddToCartForm({ variantId, disabled = false, quantity = 1, label
 
   const busy = fetcher.state !== "idle";
 
+  // A rejected add (the variant sold out after the page loaded) comes back as
+  // data rather than a thrown error. Scoped to the variant it was about, so
+  // picking another option clears it.
+  const result = fetcher.data as { ok: boolean; variantId?: string; message?: string } | undefined;
+  const rejected = result?.ok === false && result.variantId === variantId ? result.message : undefined;
+  const soldOut = disabled || rejected !== undefined;
+
   useEffect(() => {
     if (prevState.current !== "idle" && fetcher.state === "idle") {
-      setJustAdded(true);
+      // Idle means the request finished, not that it succeeded
+      setJustAdded(fetcher.data?.ok === true);
     } else if (fetcher.state === "submitting") {
       // Clicked again: clear the previous confirmation so the timer below restarts
       setJustAdded(false);
     }
     prevState.current = fetcher.state;
-  }, [fetcher.state]);
+  }, [fetcher.state, fetcher.data]);
 
   useEffect(() => {
     if (!justAdded) return;
@@ -44,9 +52,14 @@ export function AddToCartForm({ variantId, disabled = false, quantity = 1, label
       <input type="hidden" name="intent" value="add" />
       <input type="hidden" name="variantId" value={variantId} />
       <input type="hidden" name="quantity" value={quantity} />
-      <button type="submit" className="button" disabled={disabled || busy}>
-        {disabled ? "Sold out" : busy ? "Adding…" : justAdded ? "Added ✓" : label}
+      <button type="submit" className="button" disabled={soldOut || busy}>
+        {soldOut ? "Sold out" : busy ? "Adding…" : justAdded ? "Added ✓" : label}
       </button>
+      {rejected ? (
+        <p className="field-error" role="alert">
+          {rejected}
+        </p>
+      ) : null}
     </fetcher.Form>
   );
 }

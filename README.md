@@ -162,10 +162,10 @@ Route tests call the loader or action directly through the helpers in `lib/test/
   server-side.
 - **The cents scale is fixed at 100.** Zero-decimal currencies such as JPY still display
   correctly, but a store using them, or a three-decimal one, should scale per currency.
-- **Availability is enforced only in the UI.** The product page disables sold-out
-  variants, but the `/cart` action does not check `availableForSale` and checkout does not
-  recheck it, so a sold-out variant can still be added by a direct POST or ordered after
-  it sells out while sitting in a cart.
+- **Availability is a yes/no flag, not a stock count.** The `/cart` action refuses a
+  sold-out variant and checkout rechecks every line before creating the order, but both
+  read `availableForSale` only. Nothing reserves stock, so two customers can still buy
+  the last unit in the same moment.
 - **No real payment integration** — submitting checkout creates the order directly.
 - **US-only addressing.** State is a 50-state + DC dropdown, ZIP accepts `12345` or
   `12345-6789`, and phone validation expects a 10-digit North American number.

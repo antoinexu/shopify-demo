@@ -39,6 +39,16 @@ export async function action({ request }: Route.ActionArgs) {
       if (!variant) {
         throw data({ message: `Unknown variant: ${variantId}` }, { status: 400 });
       }
+      // The product page disables sold-out options, but that is only the UI. A
+      // variant can also sell out while the page sits open, which is an ordinary
+      // outcome rather than an error, so it is returned for the form to show
+      // instead of thrown, which would replace the whole page with the error boundary.
+      if (!variant.availableForSale) {
+        return data(
+          { ok: false as const, intent, variantId, message: "This option just sold out." },
+          { status: 409 },
+        );
+      }
       cookie = await addToCart(request, variantId, quantity);
       break;
     }
@@ -57,16 +67,26 @@ export async function action({ request }: Route.ActionArgs) {
 
   // Returning Set-Cookie makes React Router revalidate every loader, which is
   // how the header badge picks up the new quantity.
-  return data({ ok: true, intent }, { headers: { "Set-Cookie": cookie } });
+  return data({ ok: true as const, intent }, { headers: { "Set-Cookie": cookie } });
 }
 
-export default function CartPage({ loaderData }: Route.ComponentProps) {
+export default function CartPage({ loaderData, actionData }: Route.ComponentProps) {
   const { cart } = loaderData;
   const fetcher = useFetcher();
+
+  // Only reached without JavaScript: a plain form POST to /cart renders this
+  // page, while the fetcher path shows the message on the product page instead.
+  const notice =
+    actionData && !actionData.ok ? (
+      <p className="field-error" role="alert">
+        {actionData.message}
+      </p>
+    ) : null;
 
   if (cart.lines.length === 0) {
     return (
       <section className="empty">
+        {notice}
         <h1>Your cart is empty</h1>
         <p>Nothing caught your eye yet?</p>
         <Link to="/" className="button">
@@ -78,6 +98,7 @@ export default function CartPage({ loaderData }: Route.ComponentProps) {
 
   return (
     <section className="cart">
+      {notice}
       <div className="cart-head">
         <h1>Cart</h1>
         <fetcher.Form method="post">
@@ -131,6 +152,9 @@ function CartLineRow({ line }: { line: CartLine }) {
         </Link>
         <p className="cart-line-variant">{variant.title}</p>
         <p className="cart-line-unit">{formatMoney(variant.price)}</p>
+        {variant.availableForSale ? null : (
+          <p className="field-error">Sold out. Remove it to check out.</p>
+        )}
       </div>
 
       <fetcher.Form method="post" className="stepper">

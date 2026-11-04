@@ -99,7 +99,8 @@ export function getOrder(id: string): Order | null {
 
 /* ---------------- Form validation ---------------- */
 
-export type CheckoutErrors = Partial<Record<keyof ShippingAddress | "shipping", string>>;
+/** `cart` is the one error that is not about a field: something in the cart can no longer be bought. */
+export type CheckoutErrors = Partial<Record<keyof ShippingAddress | "shipping" | "cart", string>>;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ZIP = /^\d{5}(-\d{4})?$/;

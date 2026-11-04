@@ -36,11 +36,24 @@ export async function action({ request }: Route.ActionArgs) {
     throw redirect("/cart");
   }
 
+  // Availability is rechecked here, against the catalog as it is now. The cart
+  // page and this form both render from a load that may be minutes old, and a
+  // line can sell out while it sits in the cart; this is the last point before
+  // an order exists.
+  const soldOut = cart.lines.filter((line) => !line.variant.availableForSale);
+  if (soldOut.length > 0) {
+    const names = soldOut.map((line) => `${line.variant.product.title} (${line.variant.title})`);
+    errors.cart = `Sold out since you added it: ${names.join(", ")}. Remove it from your cart to continue.`;
+  }
+
   if (Object.keys(errors).length > 0) {
     // shippingId rides along with the address values: without JavaScript the page
     // is re-rendered from scratch, and a customer who picked Express should not
     // find themselves back on Standard just because a ZIP code was malformed.
-    return data({ errors, values: address, shippingId: shipping.id }, { status: 400 });
+    return data(
+      { errors, values: address, shippingId: shipping.id },
+      { status: soldOut.length > 0 ? 409 : 400 },
+    );
   }
 
   const order = createOrder(cart, address, shipping);
@@ -81,6 +94,10 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
   // the figure createOrder records — not one that rounds differently
   const total = fromMinorUnits(toMinorUnits(cart.subtotal.amount) + toMinorUnits(shipping.fee), currency);
 
+  // Known sold out at load time: say so up front and block the submit, rather
+  // than letting the customer fill in the whole form only for the action to refuse it.
+  const blocked = cart.lines.some((line) => !line.variant.availableForSale);
+
   return (
     <section className="checkout">
       <div className="checkout-form">
@@ -88,6 +105,13 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
           &larr; Back to cart
         </Link>
         <h1>Checkout</h1>
+
+        {blocked || errors.cart ? (
+          <p className="field-error" role="alert">
+            {errors.cart ?? "Something in your cart has sold out."}{" "}
+            <Link to="/cart">Review your cart</Link>
+          </p>
+        ) : null}
 
         <Form method="post" noValidate>
           <fieldset className="field-group" disabled={submitting}>
@@ -208,7 +232,7 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
             {errors.shipping ? <p className="field-error">{errors.shipping}</p> : null}
           </fieldset>
 
-          <button type="submit" className="button button-block" disabled={submitting}>
+          <button type="submit" className="button button-block" disabled={submitting || blocked}>
             {submitting
               ? "Placing order…"
               : `Place order · ${formatMoney(total)}`}

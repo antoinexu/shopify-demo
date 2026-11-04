@@ -16,6 +16,7 @@ import { asRequestCookie, routeArgs, unwrap } from "~/lib/test/routes";
 
 const HOODIE_S = "gid://shopify/ProductVariant/101"; // 89.00
 const TOTE = "gid://shopify/ProductVariant/201"; // 58.00
+const HOODIE_L_SOLD_OUT = "gid://shopify/ProductVariant/103"; // availableForSale: false
 
 const VALID = {
   name: "Jane Doe",
@@ -176,6 +177,39 @@ describe("an invalid submission", () => {
 
     expect(unwrap(result).status).toBe(400);
     expect(unwrap(result).data).toMatchObject({ errors: { shipping: expect.any(String) } });
+  });
+});
+
+describe("a line that sold out while it sat in the cart", () => {
+  /**
+   * addToCart in lib/cart.server writes without the /cart action's availability
+   * check, which is exactly the state a cart is in when a line was available at
+   * add time and sold out afterwards.
+   */
+  async function cartWithSoldOutLine(): Promise<string> {
+    const first = await addToCart(get(), HOODIE_S, 1);
+    return addToCart(get(first), HOODIE_L_SOLD_OUT, 1);
+  }
+
+  it("is refused with a 409 that names the product", async () => {
+    const result = await action(args(post(VALID, await cartWithSoldOutLine())));
+
+    const { status, data } = unwrap(result);
+    expect(status).toBe(409);
+    expect(data).toMatchObject({ errors: { cart: expect.stringContaining("Aurora Hoodie") } });
+  });
+
+  it("creates no order and leaves the cart as it was", async () => {
+    const cookie = await cartWithSoldOutLine();
+    const result = await action(args(post(VALID, cookie)));
+
+    expect(result).not.toBeInstanceOf(Response);
+    expect((await getCart(get(cookie))).lines).toHaveLength(2);
+  });
+
+  it("still flags field errors alongside it, so the customer fixes everything in one pass", async () => {
+    const result = await action(args(post({ ...VALID, zip: "1" }, await cartWithSoldOutLine())));
+    expect(unwrap(result).data).toMatchObject({ errors: { cart: expect.any(String), zip: expect.any(String) } });
   });
 });
 
