@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import type { Route } from "./+types/product";
 import { AddToCartForm } from "~/components/AddToCartForm";
 import { getProductByHandle } from "~/lib/catalog.server";
+import type { Product } from "~/lib/catalog/types";
 import { formatMoney } from "~/lib/money";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -21,8 +22,15 @@ export async function loader({ params }: Route.LoaderArgs) {
   return { product };
 }
 
-export default function ProductDetail({ loaderData }: Route.ComponentProps) {
-  const { product } = loaderData;
+export default function ProductRoute({ loaderData }: Route.ComponentProps) {
+  // React Router keeps this component mounted when navigating from one product
+  // to another, and with it the selected-option state, which would then name a
+  // variant the new product does not have: no radio would be checked, and the
+  // form would submit without a variantId. Keying on the product remounts it.
+  return <ProductDetail key={loaderData.product.id} product={loaderData.product} />;
+}
+
+function ProductDetail({ product }: { product: Product }) {
   const firstAvailable = product.variants.find((variant) => variant.availableForSale);
   const [selectedId, setSelectedId] = useState(firstAvailable?.id ?? product.variants[0].id);
 
