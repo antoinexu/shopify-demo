@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, type ShouldRevalidateFunction } from "react-router";
 import type { Route } from "./+types/product";
 import { AddToCartForm } from "~/components/AddToCartForm";
 import { getProductByHandle } from "~/lib/catalog.server";
@@ -9,6 +9,15 @@ import { formatMoney } from "~/lib/money";
 export function meta({ data }: Route.MetaArgs) {
   return [{ title: data ? `${data.product.title} · MERIDIAN` : "Product not found" }];
 }
+
+/**
+ * A sold-out refusal from /cart is a 409, and React Router skips revalidation
+ * after a 4xx. The page would then keep offering the option that just sold out,
+ * with every other option's availability as stale as it was at load time.
+ * Reload so the radios reflect the catalog as it is now.
+ */
+export const shouldRevalidate: ShouldRevalidateFunction = ({ actionResult, defaultShouldRevalidate }) =>
+  actionResult?.code === "SOLD_OUT" || defaultShouldRevalidate;
 
 export async function loader({ params }: Route.LoaderArgs) {
   const product = await getProductByHandle(params.handle);
