@@ -29,8 +29,8 @@ npm test             # vitest, single run
 npm run test:watch   # vitest in watch mode
 ```
 
-Requires Node 20+ to run the app (the code uses the global `crypto.randomUUID`), and
-Node 22.12+ to run the tests, which is what Vitest 5 supports.
+Requires Node 22.12+, the floor Vitest 5 supports. `package.json` declares it in
+`engines`, and CI runs on Node 22 and 24.
 
 ## Environment
 
@@ -157,7 +157,7 @@ No network and no browser. The weight sits where correctness is hardest to eyeba
 
 | File | Covers |
 | --- | --- |
-| `lib/catalog/shopify.test.ts` | The Storefront adapter against a stubbed fetch: request shape, normalization of nullable fields, cursor pagination, batching, timeouts, HTTP and GraphQL errors |
+| `lib/catalog/shopify.test.ts` | The Storefront adapter against a stubbed fetch: request shape, normalization of nullable fields, cursor pagination, batching, malformed and non-variant ids, timeouts, HTTP and GraphQL errors |
 | `lib/cart.test.ts` | Cart writes through a real cookie round trip: quantity clamping, merge on re-add, delete at zero, server-side pricing |
 | `lib/orders.test.ts` | Checkout validation, field by field, with the US phone and ZIP formats spelled out |
 | `lib/money.test.ts` | Money formatting across currencies (including a zero-decimal one) and the cents round trip |
@@ -166,7 +166,7 @@ No network and no browser. The weight sits where correctness is hardest to eyeba
 | `routes/cart.test.ts` | The `/cart` action's intent dispatch, unknown-variant rejection, and the cookie it returns |
 | `routes/checkout.test.ts` | Empty-cart redirect, server pricing, quote confirmation, idempotent submissions, deleted products, mixed cart problems, shipping and validation |
 | `routes/forms.test.ts` | SSR form structure and native option submission; no-JS shipping review and confirmation |
-| `routes/product.test.ts` | Product loader by handle and its 404s |
+| `routes/product.test.ts` | Product loader by handle and its 404s; reloading availability after a sold-out refusal |
 | `routes/order.test.ts` | Order loader 404s for ids that were never issued |
 
 Route tests call the loader or action directly through the helpers in `lib/test/routes.ts`.

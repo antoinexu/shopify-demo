@@ -180,6 +180,9 @@ const VARIANTS_BY_IDS_QUERY = `#graphql
   }
 `;
 
+/** Shopify variant ids are numeric; anything else is rejected before it reaches the API. */
+const VARIANT_GID = /^gid:\/\/shopify\/ProductVariant\/\d+$/;
+
 /* ---------------- Response shapes + normalization ---------------- */
 
 type RawMoney = { amount: string; currencyCode: string };
@@ -275,17 +278,21 @@ export const shopifyCatalog: CatalogAdapter = {
   },
 
   async getVariantsByIds(variantIds) {
-    if (variantIds.length === 0) return [];
+    // The /cart action passes form input straight through. A malformed id fails
+    // the whole query with "Invalid global id", so it is dropped here instead:
+    // an id that cannot name a variant is simply not found, as in the mock.
+    const ids = variantIds.filter((id) => VARIANT_GID.test(id));
+    if (ids.length === 0) return [];
 
-    const data = await storefront<{ nodes: RawVariantNode[] }>(VARIANTS_BY_IDS_QUERY, {
-      ids: variantIds,
-    });
+    const data = await storefront<{ nodes: RawVariantNode[] }>(VARIANTS_BY_IDS_QUERY, { ids });
 
     const found: VariantWithProduct[] = [];
     for (const node of data.nodes) {
       // nodes() returns null for ids that no longer resolve — a variant deleted
       // since it was added to someone's cart. Dropping it matches the mock behavior.
-      if (!node) continue;
+      // An id that resolves to another type comes back as {}, since the inline
+      // fragment selects nothing, so check for a field rather than for null.
+      if (!node?.id) continue;
       found.push({
         id: node.id,
         title: node.title,

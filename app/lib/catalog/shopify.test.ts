@@ -231,11 +231,42 @@ describe("getVariantsByIds", () => {
 
     const variants = await (await loadAdapter()).getVariantsByIds([
       "gid://shopify/ProductVariant/11",
-      "gid://shopify/ProductVariant/deleted",
+      "gid://shopify/ProductVariant/99",
     ]);
 
     expect(variants).toHaveLength(1);
     expect(variants[0].id).toBe("gid://shopify/ProductVariant/11");
+  });
+
+  it("drops an id that resolves to something other than a variant", async () => {
+    // The inline fragment selects nothing on a Product, so Shopify returns {}
+    mockFetch({
+      data: {
+        nodes: [
+          { id: "gid://shopify/ProductVariant/11", title: "M", availableForSale: true, price: money("120.00"), product: rawProduct() },
+          {},
+        ],
+      },
+    });
+
+    const variants = await (await loadAdapter()).getVariantsByIds([
+      "gid://shopify/ProductVariant/11",
+      "gid://shopify/ProductVariant/1",
+    ]);
+
+    expect(variants.map((variant) => variant.id)).toEqual(["gid://shopify/ProductVariant/11"]);
+  });
+
+  it("never sends a malformed id, which would fail the whole query", async () => {
+    const fetchMock = mockFetch({ data: { nodes: [null] } });
+    const adapter = await loadAdapter();
+
+    expect(await adapter.getVariantsByIds(["", "gid://shopify/Product/1", "not-a-gid"])).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await adapter.getVariantsByIds(["gid://shopify/ProductVariant/11", "junk"]);
+    const { variables } = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(variables.ids).toEqual(["gid://shopify/ProductVariant/11"]);
   });
 
   it("skips the network entirely for an empty cart", async () => {
