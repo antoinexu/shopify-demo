@@ -2,6 +2,9 @@
   "name": "shopify-demo",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "node --env-file-if-exists=.env node_modules/@react-router/dev/bin.js dev",
     "build": "react-router build",
